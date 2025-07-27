@@ -1,0 +1,92 @@
+.app-container {
+  padding: 20px;
+  background-color: #1e1e1e;
+  color: #fff;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.upload-bar {
+  margin-bottom: 10px;
+  display: flex;
+  gap: 20px;
+}
+
+.top-section {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  min-height: 400px;
+  max-height: 500px;
+  margin-bottom: 20px;
+}
+
+.video-panel {
+  flex: 7;
+  background-color: #393838;
+  border: 1px solid #606060;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.transcript-panel {
+  flex: 3;
+  background-color: #393838;
+  border: 1px solid #606060;
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.transcript-text {
+  overflow-y: auto;
+  flex: 1;
+  margin-top: 10px;
+  padding-right: 5px;
+  max-height: 100%;
+}
+
+.notes-panel {
+  background-color: #393838;
+  border: 1px solid #606060;
+  border-radius: 6px;
+  padding: 10px;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.notes-category {
+  margin-bottom: 15px;
+}
+
+.notes-category h4 {
+  margin-bottom: 5px;
+}
+
+.notes-category ul {
+  padding-left: 20px;
+  margin: 0;
+  list-style-type: disc;
+}
+
+.timestamp {
+  color: gray;
+  font-weight: bold;
+  margin-right: 5px;
+}
+
+.popup {
+  position: absolute;
+  background: white;
+  border: 1px solid #ccc;
+  padding: 5px 10px;
+  display: flex;
+  gap: 5px;
+  z-index: 1000;
+  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.2);
+  color: black;
+}

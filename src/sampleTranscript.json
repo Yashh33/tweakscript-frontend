@@ -1,0 +1,17 @@
+[
+  {
+    "start": 0.0,
+    "end": 4.5,
+    "text": "Welcome to the TweakScript demo."
+  },
+  {
+    "start": 4.6,
+    "end": 8.0,
+    "text": "This platform lets you edit your transcript easily."
+  },
+  {
+    "start": 8.1,
+    "end": 12.5,
+    "text": "Click on any line to jump in the video."
+  }
+]

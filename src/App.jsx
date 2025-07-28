@@ -11,13 +11,10 @@ const categories = [
 function App() {
   const [selectedText, setSelectedText] = useState("");
   const [notes, setNotes] = useState({});
-  const [showPopup, setShowPopup] = useState(false);
-  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0 });
   const [transcript, setTranscript] = useState([]);
   const [videoSrc, setVideoSrc] = useState(null);
 
   const videoRef = useRef();
-  const transcriptRef = useRef();
   const pausedDueToSelection = useRef(false);
 
   const handleMouseUp = () => {
@@ -25,25 +22,23 @@ function App() {
     const selected = selection.toString();
     if (selected.trim()) {
       setSelectedText(selected);
-      const rect = selection.getRangeAt(0).getBoundingClientRect();
-      setPopupPosition({ top: rect.top + window.scrollY - 60, left: rect.left });
-      setShowPopup(true);
 
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
         pausedDueToSelection.current = true;
       }
     } else {
-      setShowPopup(false);
+      setSelectedText("");
     }
   };
 
   const handleCategoryClick = (category) => {
+    if (!selectedText.trim()) return;
     setNotes((prev) => ({
       ...prev,
       [category]: [...(prev[category] || []), selectedText]
     }));
-    setShowPopup(false);
+    setSelectedText("");
     window.getSelection().removeAllRanges();
   };
 
@@ -147,24 +142,39 @@ function App() {
           </video>
         </div>
 
-        <div
-          className="transcript-panel"
-          ref={transcriptRef}
-          onMouseUp={handleMouseUp}
-        >
-          <h3>Transcript</h3>
-          <div className="transcript-text">
-            {transcript.map((line, index) => (
-              <p
-                key={index}
-                onClick={() => handleTranscriptClick(line.start)}
-                style={{ cursor: line.start !== undefined ? "pointer" : "default" }}
+        <div className="transcript-container">
+          <div className="transcript-panel" onMouseUp={handleMouseUp}>
+            <h3>Transcript</h3>
+            <div className="transcript-text">
+              {transcript.map((line, index) => (
+                <p
+                  key={index}
+                  onClick={() => handleTranscriptClick(line.start)}
+                  style={{
+                    cursor:
+                      line.start !== undefined ? "pointer" : "default"
+                  }}
+                >
+                  {line.start !== undefined && (
+                    <span className="timestamp">
+                      [{formatTime(line.start)}]{" "}
+                    </span>
+                  )}
+                  {line.text}
+                </p>
+              ))}
+            </div>
+          </div>
+
+          <div className="sticky-popup vertical-buttons">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => handleCategoryClick(cat)}
+                disabled={!selectedText}
               >
-                {line.start !== undefined && (
-                  <span className="timestamp">[{formatTime(line.start)}] </span>
-                )}
-                {line.text}
-              </p>
+                {cat}
+              </button>
             ))}
           </div>
         </div>
@@ -183,19 +193,6 @@ function App() {
           </div>
         ))}
       </div>
-
-      {showPopup && (
-        <div
-          className="popup"
-          style={{ top: popupPosition.top, left: popupPosition.left }}
-        >
-          {categories.map((cat) => (
-            <button key={cat} onClick={() => handleCategoryClick(cat)}>
-              {cat}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

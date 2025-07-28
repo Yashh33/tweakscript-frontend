@@ -24,11 +24,17 @@
 }
 
 .video-panel {
-  flex: 7;
+  flex: 6;
   background-color: #393838;
   border: 1px solid #606060;
   border-radius: 6px;
   padding: 10px;
+}
+
+.transcript-container {
+  display: flex;
+  flex: 4;
+  gap: 10px;
 }
 
 .transcript-panel {
@@ -48,6 +54,32 @@
   margin-top: 10px;
   padding-right: 5px;
   max-height: 100%;
+}
+
+.sticky-popup.vertical-buttons {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  background: #2a2a2a;
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #555;
+}
+
+.sticky-popup button {
+  padding: 5px 10px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sticky-popup button:disabled {
+  background: #555;
+  cursor: not-allowed;
 }
 
 .notes-panel {
@@ -77,16 +109,4 @@
   color: gray;
   font-weight: bold;
   margin-right: 5px;
-}
-
-.popup {
-  position: absolute;
-  background: white;
-  border: 1px solid #ccc;
-  padding: 5px 10px;
-  display: flex;
-  gap: 5px;
-  z-index: 1000;
-  box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.2);
-  color: black;
 }

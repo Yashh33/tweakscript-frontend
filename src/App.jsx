@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 const categories = [
@@ -7,22 +7,42 @@ const categories = [
   "Requirement Point",
   "Client Current Process"
 ];
+const BASE_URL = import.meta.env.VITE_BACKEND_URL;
 
 function App() {
   const [selectedText, setSelectedText] = useState("");
   const [notes, setNotes] = useState({});
+  const [editingNote, setEditingNote] = useState({ category: null, index: null });
+  const [editedText, setEditedText] = useState("");
   const [transcript, setTranscript] = useState([]);
   const [videoSrc, setVideoSrc] = useState(null);
+  const [prompt, setPrompt] = useState("");
+  const [transformedNotes, setTransformedNotes] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const videoRef = useRef();
   const pausedDueToSelection = useRef(false);
+
+  // 🔁 SPACEBAR TOGGLE SPEED LOGIC
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === "Space") {
+        const video = videoRef.current;
+        if (video && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+          e.preventDefault(); // Prevent scroll/play toggle
+          video.playbackRate = video.playbackRate === 1 ? 2 : 1;
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleMouseUp = () => {
     const selection = window.getSelection();
     const selected = selection.toString();
     if (selected.trim()) {
       setSelectedText(selected);
-
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
         pausedDueToSelection.current = true;
@@ -32,12 +52,37 @@ function App() {
     }
   };
 
-  const handleCategoryClick = (category) => {
+  const handleCategoryClick = async (category) => {
     if (!selectedText.trim()) return;
-    setNotes((prev) => ({
-      ...prev,
-      [category]: [...(prev[category] || []), selectedText]
-    }));
+
+    const timestampMatch = selectedText.match(/\[(\d{1,2}:\d{2})\]/);
+    const timestamp = timestampMatch ? timestampMatch[0] : "[00:00]";
+
+    try {
+      const res = await fetch(`${BASE_URL}/tag-transform`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category,
+          selected_text: selectedText,
+          timestamp
+        })
+      });
+
+      const data = await res.json();
+      const transformed = data.transformed_text || selectedText;
+
+      setNotes((prev) => ({
+        ...prev,
+        [category]: [...(prev[category] || []), transformed]
+      }));
+    } catch (err) {
+      setNotes((prev) => ({
+        ...prev,
+        [category]: [...(prev[category] || []), selectedText + " (Error transforming)"]
+      }));
+    }
+
     setSelectedText("");
     window.getSelection().removeAllRanges();
   };
@@ -112,24 +157,42 @@ function App() {
     }
   };
 
+  const handleTransform = async () => {
+    const compiledNotes = Object.entries(notes)
+      .map(([cat, items]) => `${cat}:\n${items.join("\n")}`)
+      .join("\n\n");
+
+    try {
+      setLoading(true);
+      const response = await fetch(`${BASE_URL}/transform`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          prompt,
+          notes: compiledNotes
+        })
+      });
+
+      const data = await response.json();
+      setTransformedNotes(data.transformed_notes || "No response.");
+    } catch (err) {
+      setTransformedNotes("Failed to fetch transformed notes.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="app-container">
       <div className="upload-bar">
         <label>
-          <input
-            type="file"
-            accept="video/mp4"
-            onChange={handleVideoUpload}
-            style={{ marginRight: "10px" }}
-          />
+          <input type="file" accept="video/mp4" onChange={handleVideoUpload} />
           Upload Video
         </label>
         <label>
-          <input
-            type="file"
-            accept=".json,.txt"
-            onChange={handleTranscriptUpload}
-          />
+          <input type="file" accept=".json,.txt" onChange={handleTranscriptUpload} />
           Upload Transcript
         </label>
       </div>
@@ -147,18 +210,9 @@ function App() {
             <h3>Transcript</h3>
             <div className="transcript-text">
               {transcript.map((line, index) => (
-                <p
-                  key={index}
-                  onClick={() => handleTranscriptClick(line.start)}
-                  style={{
-                    cursor:
-                      line.start !== undefined ? "pointer" : "default"
-                  }}
-                >
+                <p key={index} onClick={() => handleTranscriptClick(line.start)} style={{ cursor: line.start !== undefined ? "pointer" : "default" }}>
                   {line.start !== undefined && (
-                    <span className="timestamp">
-                      [{formatTime(line.start)}]{" "}
-                    </span>
+                    <span className="timestamp">[{formatTime(line.start)}] </span>
                   )}
                   {line.text}
                 </p>
@@ -168,11 +222,7 @@ function App() {
 
           <div className="sticky-popup vertical-buttons">
             {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => handleCategoryClick(cat)}
-                disabled={!selectedText}
-              >
+              <button key={cat} onClick={() => handleCategoryClick(cat)} disabled={!selectedText}>
                 {cat}
               </button>
             ))}
@@ -187,11 +237,68 @@ function App() {
             <h4>{cat}</h4>
             <ul>
               {(notes[cat] || []).map((text, idx) => (
-                <li key={idx}>{text}</li>
+                <li key={idx} onClick={() => {
+                  setEditingNote({ category: cat, index: idx });
+                  setEditedText(text);
+                }}>
+                  {editingNote.category === cat && editingNote.index === idx ? (
+                    <input
+                      type="text"
+                      value={editedText}
+                      onChange={(e) => setEditedText(e.target.value)}
+                      onBlur={() => {
+                        setNotes((prev) => {
+                          const updated = { ...prev };
+                          updated[cat][idx] = editedText;
+                          return updated;
+                        });
+                        setEditingNote({ category: null, index: null });
+                        setEditedText("");
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          setNotes((prev) => {
+                            const updated = { ...prev };
+                            updated[cat][idx] = editedText;
+                            return updated;
+                          });
+                          setEditingNote({ category: null, index: null });
+                          setEditedText("");
+                        }
+                      }}
+                      autoFocus
+                    />
+                  ) : (
+                    text
+                  )}
+                </li>
               ))}
             </ul>
           </div>
         ))}
+      </div>
+
+      <div className="transform-section">
+        <div className="prompt-panel">
+          <textarea
+            placeholder="Enter transformation prompt..."
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+          <button onClick={handleTransform} disabled={loading || !prompt.trim()}>
+            {loading ? "Transforming..." : "Transform Notes"}
+          </button>
+        </div>
+
+        <div className="transformed-notes">
+          <h3>Transformed Notes</h3>
+          <div className="transformed-content">
+            {transformedNotes.split("\n").map((line, idx) => (
+              <p key={idx}>{line}</p>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 const categories = [
-  "Open Point",
-  "Pain Point",
-  "Requirement Point",
+  "SE showed the demo",
+  "Client raised questions",
+  "SE mapped solution to client's raised question",
   "Client Current Process"
 ];
 const BASE_URL = import.meta.env.VITE_BACKEND_URL;

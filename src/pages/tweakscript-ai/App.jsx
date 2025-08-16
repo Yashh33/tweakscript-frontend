@@ -1,6 +1,6 @@
 // src/pages/tweakscript-ai/App.jsx
 import React, { useState, useRef, useEffect } from "react";
-import "./app.css";
+import "./App.css";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
 

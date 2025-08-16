@@ -1,18 +1,13 @@
+// src/pages/tweakscript-ai/App.jsx
 import React, { useState, useRef, useEffect } from "react";
-import "./App.css";
+import "./app.css";
 
-const categories = [
-  "SE showed the demo",
-  "Client raised questions",
-  "SE mapped solution to client's raised question",
-  "Client Current Process"
-];
-const BASE_URL = import.meta.env.VITE_BACKEND_URL;
+const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
 
 function App() {
   const [selectedText, setSelectedText] = useState("");
-  const [notes, setNotes] = useState({});
-  const [editingNote, setEditingNote] = useState({ category: null, index: null });
+  const [notes, setNotes] = useState([]);
+  const [editingNote, setEditingNote] = useState({ index: null });
   const [editedText, setEditedText] = useState("");
   const [transcript, setTranscript] = useState([]);
   const [videoSrc, setVideoSrc] = useState(null);
@@ -38,11 +33,13 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Handle text selection in transcript panel
   const handleMouseUp = () => {
     const selection = window.getSelection();
     const selected = selection.toString();
     if (selected.trim()) {
       setSelectedText(selected);
+      // Pause video if playing to allow user to click "Send to AI"
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
         pausedDueToSelection.current = true;
@@ -52,7 +49,7 @@ function App() {
     }
   };
 
-  const handleCategoryClick = async (category) => {
+  const handleSendToAI = async () => {
     if (!selectedText.trim()) return;
 
     const timestampMatch = selectedText.match(/\[(\d{1,2}:\d{2})\]/);
@@ -63,7 +60,6 @@ function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          category,
           selected_text: selectedText,
           timestamp
         })
@@ -72,15 +68,9 @@ function App() {
       const data = await res.json();
       const transformed = data.transformed_text || selectedText;
 
-      setNotes((prev) => ({
-        ...prev,
-        [category]: [...(prev[category] || []), transformed]
-      }));
+      setNotes((prev) => [...prev, transformed]);
     } catch (err) {
-      setNotes((prev) => ({
-        ...prev,
-        [category]: [...(prev[category] || []), selectedText + " (Error transforming)"]
-      }));
+      setNotes((prev) => [...prev, selectedText + " (Error transforming)"]);
     }
 
     setSelectedText("");
@@ -144,13 +134,16 @@ function App() {
     setVideoSrc(url);
   };
 
+  // Handle clicks in transcript panel
   const handleTranscriptClick = (startTime) => {
+    // Resume video if paused due to text selection
     if (pausedDueToSelection.current && videoRef.current?.paused) {
       videoRef.current.play();
       pausedDueToSelection.current = false;
       return;
     }
 
+    // Jump to timestamp and play if a timestamped line is clicked
     if (videoRef.current && startTime !== undefined) {
       videoRef.current.currentTime = startTime;
       videoRef.current.play();
@@ -158,9 +151,7 @@ function App() {
   };
 
   const handleTransform = async () => {
-    const compiledNotes = Object.entries(notes)
-      .map(([cat, items]) => `${cat}:\n${items.join("\n")}`)
-      .join("\n\n");
+    const compiledNotes = notes.join("\n\n");
 
     try {
       setLoading(true);
@@ -221,62 +212,55 @@ function App() {
           </div>
 
           <div className="sticky-popup vertical-buttons">
-            {categories.map((cat) => (
-              <button key={cat} onClick={() => handleCategoryClick(cat)} disabled={!selectedText}>
-                {cat}
-              </button>
-            ))}
+            <button onClick={handleSendToAI} disabled={!selectedText}>
+              Send to AI
+            </button>
           </div>
         </div>
       </div>
 
       <div className="notes-panel">
         <h3>Notes</h3>
-        {categories.map((cat) => (
-          <div key={cat} className="notes-category">
-            <h4>{cat}</h4>
-            <ul>
-              {(notes[cat] || []).map((text, idx) => (
-                <li key={idx} onClick={() => {
-                  setEditingNote({ category: cat, index: idx });
-                  setEditedText(text);
-                }}>
-                  {editingNote.category === cat && editingNote.index === idx ? (
-                    <input
-                      type="text"
-                      value={editedText}
-                      onChange={(e) => setEditedText(e.target.value)}
-                      onBlur={() => {
-                        setNotes((prev) => {
-                          const updated = { ...prev };
-                          updated[cat][idx] = editedText;
-                          return updated;
-                        });
-                        setEditingNote({ category: null, index: null });
-                        setEditedText("");
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          setNotes((prev) => {
-                            const updated = { ...prev };
-                            updated[cat][idx] = editedText;
-                            return updated;
-                          });
-                          setEditingNote({ category: null, index: null });
-                          setEditedText("");
-                        }
-                      }}
-                      autoFocus
-                    />
-                  ) : (
-                    text
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
+        <ul>
+          {notes.map((text, idx) => (
+            <li key={idx} onClick={() => {
+              setEditingNote({ index: idx });
+              setEditedText(text);
+            }}>
+              {editingNote.index === idx ? (
+                <input
+                  type="text"
+                  value={editedText}
+                  onChange={(e) => setEditedText(e.target.value)}
+                  onBlur={() => {
+                    setNotes((prev) => {
+                      const updated = [...prev];
+                      updated[idx] = editedText;
+                      return updated;
+                    });
+                    setEditingNote({ index: null });
+                    setEditedText("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      setNotes((prev) => {
+                        const updated = [...prev];
+                        updated[idx] = editedText;
+                        return updated;
+                      });
+                      setEditingNote({ index: null });
+                      setEditedText("");
+                    }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                text
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
 
       <div className="transform-section">

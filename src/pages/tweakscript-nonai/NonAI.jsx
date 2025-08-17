@@ -1,19 +1,27 @@
+// src/pages/tweakscript-nonai/NonAI.jsx
 import React, { useState, useRef, useEffect } from "react";
 import "./nonai.css";
 
+const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://127.0.0.1:8000";
+
 function NonAI() {
   const [selectedText, setSelectedText] = useState("");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(""); // For Notes panel
+  const [inputNotes, setInputNotes] = useState(""); // For Input panel
   const [transcript, setTranscript] = useState([]);
   const [videoSrc, setVideoSrc] = useState(null);
   const [currentLineIndex, setCurrentLineIndex] = useState(null);
+  const [outputs, setOutputs] = useState([]);
+  const [showPopup, setShowPopup] = useState(false);
 
   const videoRef = useRef();
   const pausedDueToSelection = useRef(false);
   const pausedDueToTyping = useRef(false);
-  const textareaRef = useRef(null);
+  const notesTextareaRef = useRef(null); // Ref for Notes panel
+  const inputTextareaRef = useRef(null); // Ref for Input panel
   const shiftHoldTimer = useRef(null);
   const speedSetByShift = useRef(false);
+  const scrollPosition = useRef(0); // To store and restore scroll position
 
   // 🔁 SPACEBAR TOGGLE SPEED LOGIC + NEW SHORTCUTS
   useEffect(() => {
@@ -39,8 +47,10 @@ function NonAI() {
           }
         }
         // Ensure textarea stays focused
-        if (textareaRef.current) {
-          textareaRef.current.focus();
+        if (notesTextareaRef.current) {
+          notesTextareaRef.current.focus();
+        } else if (inputTextareaRef.current) {
+          inputTextareaRef.current.focus();
         }
       } else if (e.key === "Shift") {
         if (!shiftHeldStart) {
@@ -194,7 +204,7 @@ function NonAI() {
     setVideoSrc(url);
   };
 
-  // Handle note input change to add timestamp for new points
+  // Handle note input change for Notes panel
   const handleNoteChange = (e) => {
     const newValue = e.target.value;
     const cursorPos = e.target.selectionStart;
@@ -213,6 +223,118 @@ function NonAI() {
     } else {
       setNotes(newValue);
     }
+    // Restore scroll position after state update
+    setTimeout(() => window.scrollTo(0, scrollPosition.current), 0);
+  };
+
+  // Handle input change for Input panel
+  const handleInputChange = (e) => {
+    const newValue = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    const currentChar = newValue[cursorPos - 1];
+
+    // Check if starting a new point (first char after \n\n or at start)
+    const isNewPoint =
+      cursorPos === 1 ||
+      (cursorPos >= 2 && newValue.slice(0, cursorPos - 1).endsWith("\n\n"));
+
+    if (isNewPoint && currentChar && videoRef.current) {
+      const timestamp = formatTime(Math.floor(videoRef.current.currentTime));
+      const beforeCursor = newValue.slice(0, cursorPos - 1);
+      const afterCursor = newValue.slice(cursorPos - 1);
+      setInputNotes(`${beforeCursor}[${timestamp}] ${afterCursor}`);
+    } else {
+      setInputNotes(newValue);
+    }
+    // Restore scroll position after state update
+    setTimeout(() => window.scrollTo(0, scrollPosition.current), 0);
+  };
+
+  // Handle Shift + Enter to send input note to LLM
+  const handleInputKeyDown = (e) => {
+    if (e.key === "Enter" && e.shiftKey && inputNotes.trim()) {
+      e.preventDefault();
+      const endTime = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0;
+      const endTimestamp = formatTime(endTime);
+      const fullNote = `${inputNotes}\n[${endTimestamp}]`;
+      sendToLLM(fullNote, endTime);
+      setInputNotes("");
+    }
+  };
+
+  // Parse timestamps from note text
+  const parseTimestampsFromNote = (text) => {
+    const regex = /\[(\d{2}):(\d{2})\]/g;
+    let matches = [];
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const min = parseInt(match[1]);
+      const sec = parseInt(match[2]);
+      matches.push(min * 60 + sec);
+    }
+    return matches;
+  };
+
+  // Send note and transcript segment to LLM
+  const sendToLLM = async (fullNote, endTime) => {
+    const timestamps = parseTimestampsFromNote(fullNote);
+    if (timestamps.length === 0) return;
+
+    const startTime = Math.min(...timestamps);
+    const segment = transcript
+      .filter((line) => line.start >= startTime && line.start < endTime)
+      .map((line) => line.text)
+      .join("\n");
+
+    // const llmPrompt = "ewrite the Rnote in a clear, concise manner, identifying common terms from the notes and the context from the transcript to make it professional third-person. Also append the timestamps too.";
+
+    const llmPrompt = "You are a professional note-taking assistant for video calls, specializing in rewriting quick user notes into structured summaries using context from the transcript.\n\nUser Notes: {notes}\n\nTranscript Segment: {transcript}\n\nInstructions:\n- The user has noted important keywords from the video. Use the transcript segment (which includes timestamps) to add relevant context to these keywords.\n- Create a concise headline that summarizes the noted keywords with added context in third-person format.\n- Follow the headline with 1-4 bullet points, each in third-person, with better sentence formation, focusing on the noted keywords and transcript context.\n- Prepend the headline with the starting timestamp from the notes.\n- Prepend each bullet point with a timestamp from the transcript that best matches the content.\n- Stick strictly to the content in the notes and transcript; do not add, remove, or invent information.\n- Output format exactly as follows:\n\nHeadline: [Starting Timestamp] Summary Headline\n\n- [Timestamp] Bullet point 1\n- [Timestamp] Bullet point 2\n...";
+
+    try {
+      const response = await fetch(`${BASE_URL}/transform`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: llmPrompt,
+          notes: `Notes: ${fullNote}\nTranscript: ${segment}`,
+        }),
+      });
+
+      const data = await response.json();
+      setOutputs((prev) => [...prev, data.transformed_notes || "No response"]);
+    } catch (err) {
+      setOutputs((prev) => [...prev, "Error sending to LLM"]);
+    }
+  };
+
+  // Save and restore scroll position on focus
+  useEffect(() => {
+    const handleFocus = () => {
+      scrollPosition.current = window.scrollY;
+    };
+    const textareas = [notesTextareaRef, inputTextareaRef];
+    textareas.forEach((ref) => {
+      if (ref.current) {
+        ref.current.addEventListener("focus", handleFocus);
+      }
+    });
+    return () => {
+      textareas.forEach((ref) => {
+        if (ref.current) {
+          ref.current.removeEventListener("focus", handleFocus);
+        }
+      });
+    };
+  }, []);
+
+  // Open popup
+  const handleOpenPopup = () => {
+    setShowPopup(true);
+  };
+
+  // Close popup
+  const handleClosePopup = () => {
+    setShowPopup(false);
   };
 
   function formatTime(seconds) {
@@ -236,49 +358,79 @@ function NonAI() {
           <input type="file" accept=".json,.txt" onChange={handleTranscriptUpload} />
           Upload Transcript
         </label>
+        <button onClick={handleOpenPopup}>See Generated Notes</button>
       </div>
 
-      <div className="top-section">
-        <div className="video-panel">
-          <video ref={videoRef} controls width="100%">
-            {videoSrc && <source src={videoSrc} type="video/mp4" />}
-            Your browser does not support video playback.
-          </video>
+      <div className="main-content">
+        <div className="top-section">
+          <div className="video-panel">
+            <video ref={videoRef} controls width="100%">
+              {videoSrc && <source src={videoSrc} type="video/mp4" />}
+              Your browser does not support video playback.
+            </video>
+          </div>
+
+          <div className="notes-container">
+            <div className="notes-panel">
+              <h3>Notes</h3>
+              <textarea
+                ref={notesTextareaRef}
+                placeholder="Type your notes here (Shift + Tab to pause/resume video, Shift for 2s for 2x speed, Shift + A to rewind 10s, Shift + D to forward 10s)..."
+                value={notes}
+                onChange={handleNoteChange}
+                autoFocus
+              />
+            </div>
+
+            <div className="input-panel">
+              <h3>Input</h3>
+              <textarea
+                ref={inputTextareaRef}
+                placeholder="Type your note here (Shift + Enter to send to AI)..."
+                value={inputNotes}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+              />
+            </div>
+          </div>
         </div>
 
-        <div className="notes-panel">
-          <h3>Notes</h3>
-          <textarea
-            ref={textareaRef}
-            placeholder="Type your notes here (Shift + Tab to pause/resume video, Shift for 2s for 2x speed, Shift + A to rewind 10s, Shift + D to forward 10s)..."
-            value={notes}
-            onChange={handleNoteChange}
-            autoFocus
-          />
+        <div className="transcript-panel">
+          <h3>Transcript</h3>
+          <div className="transcript-text">
+            {transcript.map((line, index) => (
+              <p
+                key={index}
+                onClick={() => handleTranscriptClick(line.start)}
+                className={index === currentLineIndex ? "current-line" : ""}
+                style={{ cursor: line.start !== undefined ? "pointer" : "default" }}
+                ref={index === currentLineIndex ? (el) => {
+                  if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+                } : null}
+              >
+                {line.start !== undefined && (
+                  <span className="timestamp">[{formatTime(line.start)}] </span>
+                )}
+                {line.text}
+              </p>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="transcript-panel">
-        <h3>Transcript</h3>
-        <div className="transcript-text">
-          {transcript.map((line, index) => (
-            <p
-              key={index}
-              onClick={() => handleTranscriptClick(line.start)}
-              className={index === currentLineIndex ? "current-line" : ""}
-              style={{ cursor: line.start !== undefined ? "pointer" : "default" }}
-              ref={index === currentLineIndex ? (el) => {
-                if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-              } : null}
-            >
-              {line.start !== undefined && (
-                <span className="timestamp">[{formatTime(line.start)}] </span>
-              )}
-              {line.text}
-            </p>
-          ))}
+      {showPopup && (
+        <div className="popup-overlay" onClick={handleClosePopup}>
+          <div className="popup-content" onClick={(e) => e.stopPropagation()}>
+            <h3>Generated Notes</h3>
+            <div className="popup-output">
+              {outputs.map((out, idx) => (
+                <p key={idx}>{out}</p>
+              ))}
+            </div>
+            <button onClick={handleClosePopup}>Close</button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
